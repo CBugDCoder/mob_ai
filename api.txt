@@ -1,0 +1,58 @@
+mob_ai.register_driver(name,def)
+	def = {
+		start         = func(self,old_driver,inputdata)
+		step          = func(self,dtime)
+		stop          = func(self,new_driver,inputdata)
+		on_rightclick = func(self,clicker)
+		on_punch      = func(self,puncher,time_from_last_punch,tool_capabilities,dir)
+		on_anim_end   = func(self,anim)
+		custom_vars   = {var1 = <init_val>, var2 = <init_val>, var3 = <init_val>, var4 = <init_val>,...}
+	}
+
+mob_ai.register_mob(name,def)
+	def = {
+		mesh = <string>,
+		colisionbox = {x = <x>, y = <y>,z = <z>},
+		driver = <starting driver>,
+		animations = {
+			<anim 1> = {
+				start = <start frame>,
+				end = <end frame>,
+				speed = <frame speed>,
+				blend = <number 0 for none>,
+				loop = true|false,
+			},
+			<anim 2> = {
+				start = <start frame>,
+				end = <end frame>,
+				speed = <frame speed>,
+				blend = <number 0 for none>,
+				loop = true|false,
+			},
+			...
+		}
+		script = {
+			driver1 = {
+				input = <new driver>,
+				input2 = <new driver>,
+				...
+			},
+			driver2 = {
+				input = <new driver>,
+				input2 = <new driver>,
+				...
+			},
+			driver3 = {
+				input = <new driver>,
+				input2 = <new driver>,
+				...
+			},
+			driver4 = {
+				input = <new driver>,
+				input2 = <new driver>,
+				...
+			},
+			...
+		},
+		
+	}
