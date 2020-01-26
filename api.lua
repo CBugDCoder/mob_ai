@@ -243,6 +243,7 @@ function mob_ai.on_activate(self,staticdata,dtimes)
 		end
 	end
 	self.object:set_armor_groups({fleshy = 100})
+	self.object:set_hp(self.hp)
 	self.driver_funcs = mob_ai.registered_drivers[self.driver]
 	self.driver_funcs.start(self,"startup",nil)
 end
@@ -342,7 +343,7 @@ end
 function mob_ai.register_mob(name,def)
 	local definition = {
 		--Builtin Entity definitions
-		hp_max                 = def.hp_max or 10,
+		hp                     = def.hp or 10,
 		physical               = def.physical or true,
 		collisionbox           = def.collisionbox or {-0.5, 0.0, -0.5, 0.5, 1.0, 0.5},
 		selectionbox           = def.selectionbox or {-0.5, 0.0, -0.5, 0.5, 1.0, 0.5},
