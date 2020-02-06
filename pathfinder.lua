@@ -14,347 +14,323 @@ current_value
 ^ {int:hCost, int:gCost, int:fCost, hash:parent, vect:pos}
 ]]--
 
-local openSet = {}
-local closedSet = {}
 
-local function get_distance(start_pos, end_pos)
-	local distX = math.abs(start_pos.x - end_pos.x)
-	local distZ = math.abs(start_pos.z - end_pos.z)
 
-	if distX > distZ then
-		return 14 * distZ + 10 * (distX - distZ)
-	else
-		return 14 * distX + 10 * (distZ - distX)
-	end
-end
-
-local function get_distance_to_neighbor(start_pos, end_pos)
-	local distX = math.abs(start_pos.x - end_pos.x)
-	local distY = math.abs(start_pos.y - end_pos.y)
-	local distZ = math.abs(start_pos.z - end_pos.z)
-
-	if distX > distZ then
-		return (14 * distZ + 10 * (distX - distZ)) * (distY + 1)
-	else
-		return (14 * distX + 10 * (distZ - distX)) * (distY + 1)
-	end
-end
-
-local function walkable(node, pos, current_pos)
-		if string.find(node.name,"doors:door") then
-			if (node.param2 == 0 or
-					node.param2 == 2) and
-					math.abs(pos.z - current_pos.z) > 0 and
-					pos.x == current_pos.x then
-				return true
-			elseif (node.param2 == 1 or
-					node.param2 == 3) and
-					math.abs(pos.z - current_pos.z) > 0 and
-					pos.x == current_pos.x then
-				return false
-			elseif (node.param2 == 0 or
-					node.param2 == 2) and
-					math.abs(pos.x - current_pos.x) > 0 and
-					pos.z == current_pos.z then
-				return false
-			elseif (node.param2 == 1 or
-					node.param2 == 3) and
-					math.abs(pos.x - current_pos.x) > 0 and
-					pos.z == current_pos.z then
-				return true
-			end
-		elseif string.find(node.name,"doors:hidden") then
-			local node_door = minetest.get_node({x = pos.x, y = pos.y - 1, z = pos.z})
-			if (node_door.param2 == 0 or
-					node_door.param2 == 2) and
-					math.abs(pos.z - current_pos.z) > 0 and
-					pos.x == current_pos.x then
-				return true
-			elseif (node_door.param2 == 1 or
-					node_door.param2 == 3) and
-					math.abs(pos.z - current_pos.z) > 0 and
-					pos.x == current_pos.x then
-				return false
-			elseif (node_door.param2 == 0 or
-					node_door.param2 == 2) and
-					math.abs(pos.x - current_pos.x) > 0 and
-					pos.z == current_pos.z then
-				return false
-			elseif (node_door.param2 == 1 or
-					node_door.param2 == 3) and
-					math.abs(pos.x - current_pos.x) > 0 and
-					pos.z == current_pos.z then
-				return true
-			end
-
-		end
-		return minetest.registered_nodes[node.name].walkable
-end
-
-local function get_neighbor_ground_level(pos, jump_height, fall_height, current_pos)
+local function walkable(pos, liquids_walkable)
 	local node = minetest.get_node(pos)
-	local height = 0
-	if walkable(node, pos, current_pos) then
-		repeat
-			height = height + 1
-			if height > jump_height then
-				return nil
-			end
-			pos.y = pos.y + 1
-			node = minetest.get_node(pos)
-		until not walkable(node, pos, current_pos)
-		return pos
+	if liquids_walkable then
+		return minetest.registered_nodes[node.name].walkable or minetest.registered_nodes[node.name].liquidtype ~= "none"
 	else
-		repeat
-			height = height + 1
-			if height > fall_height then
-				return nil
-			end
-			pos.y = pos.y - 1
-			node = minetest.get_node(pos)
-		until walkable(node, pos, current_pos)
-		return {x = pos.x, y = pos.y + 1, z = pos.z}
+		return minetest.registered_nodes[node.name].walkable
 	end
 end
 
--- local function dot(a, b)
--- 	return a.x * b.x + a.y * b.y + a.z * b.z
--- end
---
--- local function len(a)
---   return math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
--- end
---
--- local function lensq(a)
---   return a.x * a.x + a.y * a.y + a.z * a.z
--- end
---
--- local function normalize(a)
---   local l = len(a)
---   a.x = a.x / l
---   a.y = a.y / l
---   a.z = a.z / l
---   return a
--- end
-
-function pathfinder.find_path(pos, endpos, entity, dtime)
-	-- if dtime > 0.1 then
-	-- 	return
-	-- end
-	-- round positions if not done by former functions
-	print(dump(pos))
-	pos = {
-			x = math.floor(pos.x + 0.5),
-			y = math.floor(pos.y + 0.5),
-			z = math.floor(pos.z + 0.5)
-	}
-
-	endpos = {
-			x = math.floor(endpos.x + 0.5),
-			y = math.floor(endpos.y + 0.5),
-			z = math.floor(endpos.z + 0.5)
-	}
-
-	local target_node = minetest.get_node(endpos)
-	if walkable(target_node, endpos, endpos) then
-		endpos.y = endpos.y + 1
+local function is_fence(pos)
+	local node = minetest.get_node(pos)
+	if string.find(node.name,"fence") == nil then
+		return false
+	else
+		return true
 	end
+end
 
-	local start_node = minetest.get_node(pos)
-	if string.find(start_node.name,"doors:door") then
-		if start_node.param2 == 0 then
-			pos.z = pos.z + 1
-		elseif start_node.param2 == 1 then
-			pos.x = pos.x + 1
-		elseif start_node.param2 == 2 then
-			pos.z = pos.z - 1
-		elseif start_node.param2 == 3 then
-			pos.x = pos.x - 1
+local function get_ground_neighbors(pos, fall, jump, height, liquids_walkable)
+	local neighbors = {}
+	fall = fall or 4
+	jump = jump or 1
+	--Must subtract 1 or the check will be too high
+	height = height-1 or 1
+	liquids_walkable = (liquids_walkable ~= false)
+	for x = -1,1 do
+		for z = -1,1 do
+			if z ~= 0 or x ~= 0 then
+				local gl
+				local fits = false
+				for y = -fall,jump do
+					if not walkable({x = pos.x+x, y = pos.y+y, z = pos.z+z}, liquids_walkable) then
+						if walkable({x = pos.x+x, y = pos.y+y-1, z = pos.z+z}, liquids_walkable) and (not is_fence({x = pos.x+x, y = pos.y+y-1, z = pos.z+z})) then
+							gl = pos.y+y
+							fits = true
+							for y1 = 0,height do
+								if walkable({x = pos.x+x, y = gl+y1, z = pos.z+z}, liquids_walkable) then
+									fits = false
+									break
+								end
+							end
+							if fits then
+								if z ~= 0 and x ~= 0 then
+									if gl < pos.y then
+										for y2 = 0,height do
+											if walkable({x = pos.x, y = pos.y+y2, z = pos.z+z}, liquids_walkable) or walkable({x = pos.x+x, y = pos.y+y2, z = pos.z}, liquids_walkable) then
+												fits = false
+												break
+											end
+										end
+									else
+										for y2 = 0,height do
+											if walkable({x = pos.x, y = gl+y2, z = pos.z+z}, liquids_walkable) or walkable({x = pos.x+x, y = gl+y2, z = pos.z}, liquids_walkable) then
+												fits = false
+												break
+											end
+										end
+									end
+								end
+								if gl > pos.y then
+									for y3 = 0,height+gl-pos.y do
+										if walkable({x = pos.x, y = pos.y+y3, z = pos.z}, liquids_walkable) then
+											fits = false
+											break
+										end
+									end
+								end
+							end
+						end
+					end
+					if gl and fits then
+						local hash = minetest.hash_node_position({x = pos.x+x, y = gl, z = pos.z+z})
+						local g_cost = 10
+						if z ~= 0 and x ~= 0 then
+							g_cost = g_cost + 4
+						end
+						if gl > pos.y then
+							g_cost = g_cost + 6
+						end
+						neighbors[hash] = {pos = {x = pos.x+x, y = gl, z = pos.z+z}, g_cost = g_cost}
+					end
+				end
+			end
 		end
 	end
+	return neighbors
+end
 
-	local start_time = minetest.get_us_time()
-	local start_index = minetest.hash_node_position(pos)
-	local target_index = minetest.hash_node_position(endpos)
-	local count = 1
+--returns the h_cost value of pos when target_pos is the goal
+local function get_h_cost(pos, target_pos)
+	local distance = math.sqrt((pos.x-target_pos.x)^2 + (pos.y-target_pos.y)^2 + (pos.z-target_pos.z)^2)
+	return math.floor(distance*10)
+end
 
-	openSet = {}
-	closedSet = {}
-	-- minetest.set_node(pos, {name = "default:glass"})
-	-- minetest.set_node(endpos, {name = "default:glass"})
-	-- print(dump(pos))
-	-- print(endpos)
 
-	local h_start = get_distance(pos, endpos)
-	openSet[start_index] = {hCost = h_start, gCost = 0, fCost = h_start, parent = nil, pos = pos}
+--returns the next node to be expanded
+local function get_cheapest_node(list)
+	local cheapest = "blank"
+	
+	for hash, node in pairs(list) do
+		if cheapest ~= "blank" then
+			if node.f_cost < list[cheapest].f_cost then
+				cheapest = hash
+			elseif node.f_cost == list[cheapest].f_cost then
+				if node.h_cost < list[cheapest].h_cost then
+					cheapest = hash
+				end
+			end
+		else
+			cheapest = hash
+		end
+	end
+	
+	return cheapest
+end
 
-	-- Entity values
-	local entity_height = math.ceil(entity.collisionbox[5] - entity.collisionbox[2]) or 2
-	local entity_fear_height = entity.fear_height or 3
-	local entity_jump_height = entity.jump_height or 1
-	local neighbors_cache = {}
-
-	repeat
-		local current_index
-		local current_values
-
-		-- Get one index as reference from openSet
-		for i, v in pairs(openSet) do
-			current_index = i
-			current_values = v
+--returns a returnable path built out of position hashes
+local function get_path(list, current)
+	local path = {}
+	
+	while true do
+		table.insert(path,current)
+		current = list[current].parent
+		if current == "Start" then
+			--We have reached the start of the path so stop looking for next point
 			break
 		end
-		-- Search for lowest fCost
-		for i, v in pairs(openSet) do
-			if v.fCost < openSet[current_index].fCost or v.fCost == current_values.fCost and v.hCost < current_values.hCost then
-				current_index = i
-				current_values = v
-			end
+	end
+	
+	--Reverse the order of path to go from start to end not end to start
+	--[[local reordered_path = {}
+	for i = #path, 1, -1 do
+		table.insert(reordered_path,path[i])
+		print(path[i])
+	end]]
+	return path
+end
+
+
+--[[path_types (
+	0 = ground only, will swim on top of liquids but will not dive.
+	1 = ground only, will sink in liquids
+	2 = amphibious, can swim freely in liquids
+	3 = flying, cannot move straight up and down
+	4 = flying, can move straight up and down
+)]]--
+
+--[[
+OPEN the set of nodes to be evaluated
+CLOSED the set of nodes already evaluated
+
+add the start node to OPEN
+
+loop
+	current = node in OPEN with the lowest f_cost
+	remove current from OPEN
+	add current to CLOSED
+	
+	if current is the target node
+		return path
+	
+	foreach neighbor of the current node
+		if neighbor is not transversable or neighbor is in CLOSED
+			skip to the next neighbor
+		
+		if new path to neighbor is shorter OR neighbor is not in OPEN
+			set f_cost of neighbor
+			set parent of neighbor to current
+			if neighbor is not in OPEN
+				add neighbor to OPEN
+
+
+]]--
+
+function pathfinder.find_path(current_pos, target_pos, path_type, height, fall, jump)
+	local time = minetest.get_us_time()
+	--Initialize variables
+	local open = {}
+	local closed = {}
+	local path = {}
+	local liquids_walkable = true --Will set based on path_type later
+	local height = height or 2
+	local fall = fall or 4
+	local jump = jump or 1
+	local path_type = path_type or 0
+	local get_neighbors = get_ground_neighbors
+	
+	--Initialize open to current pos
+	--if statement forces construction variables to be purged
+	if true then
+		local h_cost = get_h_cost(current_pos,target_pos)
+		local hash = minetest.hash_node_position(current_pos)
+		open[hash] = {
+			pos = current_pos, 
+			g_cost = 0, 
+			h_cost = h_cost, 
+			f_cost = h_cost,--h_cost+g_cost and since g_cost = 0 f_cost = h_cost
+			parent = "Start",
+		}
+	end
+	
+	--Loop until I find a path or tun out of time
+	local counter = 0
+	while counter < 400 do
+		--Increment counter to prevent an infinite loop
+		counter = counter + 1
+		--Get node to expand
+		local current = get_cheapest_node(open)
+		
+		--Put node in closed and remove from open
+		closed[current] = {
+			pos = open[current].pos, 
+			g_cost = open[current].g_cost, 
+			h_cost = open[current].h_cost, 
+			f_cost = open[current].f_cost,
+			parent = open[current].parent,
+		}
+		open[current] = nil
+		
+		--Am I at the end
+		if closed[current].h_cost == 0 then
+			--Yes, Hooray grab the path and run.
+			path = get_path(closed,current)
+			break
 		end
-
-		openSet[current_index] = nil
-		closedSet[current_index] = current_values
-		count = count - 1
-
-		if current_index == target_index then
-			--~ minetest.chat_send_all("Found path in " .. (minetest.get_us_time() - start_time) / 1000 .. "ms")
-			local path = {}
-			repeat
-				if not closedSet[current_index] then
-					return
-				end
-				table.insert(path, closedSet[current_index].pos)
-				current_index = closedSet[current_index].parent
-			until start_index == current_index
-			table.insert(path, closedSet[current_index].pos)
-			local reverse_path = {}
-			repeat
-				table.insert(reverse_path, table.remove(path))
-			until #path == 0
-			minetest.chat_send_all("Found path in " .. (minetest.get_us_time() - start_time) / 1000 .. "ms. " .. "Path length: " .. #reverse_path)
-			return reverse_path
-		end
-
-		local current_pos = current_values.pos
-
-		local neighbors = {}
-		local neighbors_index = 1
-		for z = -1, 1 do
-		for x = -1, 1 do
-			local neighbor_pos = {x = current_pos.x + x, y = current_pos.y, z = current_pos.z + z}
-			local neighbor = minetest.get_node(neighbor_pos)
-			local neighbor_ground_level = get_neighbor_ground_level(neighbor_pos, entity_jump_height, entity_fear_height, current_pos)
-			local neighbor_clearance = false
-			if neighbor_ground_level then
-				local neighbor_hash = minetest.hash_node_position(neighbor_ground_level)
-				local pos_above_head = {x = current_pos.x, y = current_pos.y + entity_height, z = current_pos.z}
-				local node_above_head = minetest.get_node(pos_above_head)
-				if neighbor_ground_level.y - current_pos.y > 0 and not walkable(node_above_head, pos_above_head, current_pos) then
-					local height = -1
-					repeat
-						height = height + 1
-						local pos = {	x = neighbor_ground_level.x,
-										y = neighbor_ground_level.y + height,
-										z = neighbor_ground_level.z}
-						local node = minetest.get_node(pos)
-					until walkable(node, pos, current_pos) or height > entity_height
-					if height >= entity_height then
-						neighbor_clearance = true
-					end
-				elseif neighbor_ground_level.y - current_pos.y > 0 and walkable(node_above_head, pos_above_head, current_pos) then
-					neighbors[neighbors_index] = {
-							hash = nil,
-							pos = nil,
-							clear = nil,
-							walkable = nil,
+		
+		--Get neighbors
+		local neighbors = get_neighbors(closed[current].pos, fall, jump, height, liquids_walkable)
+		--Check all my neighbors especially the Petersons
+		for hash, neighbor in pairs(neighbors) do
+			--Has this node already been checked?
+			if closed[hash] == nil then
+				--No, Okay. Has it been expanded into yet?
+				if open[hash] == nil then
+					--No, Okay. Add node to open set
+					local g_cost = closed[current].g_cost + neighbor.g_cost
+					local h_cost = get_h_cost(neighbor.pos, target_pos)
+					open[hash] = {
+						pos = neighbor.pos,
+						g_cost = g_cost,
+						h_cost = h_cost,
+						f_cost = g_cost + h_cost,
+						parent = current,
 					}
 				else
-					local height = -1
-					repeat
-						height = height + 1
-						local pos = {	x = neighbor_ground_level.x,
-										y = current_pos.y + height,
-										z = neighbor_ground_level.z}
-						local node = minetest.get_node(pos)
-					until walkable(node, pos, current_pos) or height > entity_height
-					if height >= entity_height then
-						neighbor_clearance = true
+					--Yes, Okay. Is this path a better option to get to this node?
+					if open[hash].g_cost > closed[current].g_cost + neighbor.g_cost then
+						--Yes. Well then, by all means update it.
+						open[hash].g_cost = closed[current].g_cost + neighbor.g_cost
+						open[hash].f_cost = open[hash].g_cost + open[hash].h_cost
+						open[hash].parent = current
 					end
 				end
-
-				neighbors[neighbors_index] = {
-						hash = minetest.hash_node_position(neighbor_ground_level),
-						pos = neighbor_ground_level,
-						clear = neighbor_clearance,
-						walkable = walkable(neighbor, neighbor_pos, current_pos),
-				}
-			else
-				neighbors[neighbors_index] = {
-						hash = nil,
-						pos = nil,
-						clear = nil,
-						walkable = nil,
-				}
 			end
+		end--End For loop
+	end--End While loop
+	
+	print(minetest.get_us_time()-time)
+	-- Did I get a good path back?
+	if path ~= {} then
+		--Yes. Excellent then I will tell the user
+		return path
+	else
+		--No? Why not? I am a perfect machine. Oh, well I guess I have to tell the user that I couldn't find a path. :'(
+		return false
+	end
+end
 
-			neighbors_index = neighbors_index + 1
+minetest.register_chatcommand("neighbors",{
+	description = "get players neighbors",
+	func = function(name,param)
+		local player = minetest.get_player_by_name(name)
+		local pos = player:get_pos()
+		pos = {
+			x = math.floor(pos.x+0.5), 
+			y = math.floor(pos.y+0.5), 
+			z = math.floor(pos.z+0.5)
+		} 
+		local neighbors = get_ground_neighbors(pos, 4, 1, 2, false)
+		for _,neighbor in pairs(neighbors) do
+			minetest.set_node(neighbor.pos,{name = "default:stone"})
+			local meta = minetest.get_meta(neighbor.pos)
+			meta:set_string("infotext", tostring(neighbor.g_cost))
 		end
-		end
+	end
+})
 
-		for id, neighbor in pairs(neighbors) do
-			-- don't cut corners
-			local cut_corner = false
-			if id == 1 then
-				if not neighbors[id + 1].clear or not neighbors[id + 3].clear
-						or neighbors[id + 1].walkable or neighbors[id + 3].walkable then
-					cut_corner = true
-				end
-			elseif id == 3 then
-				if not neighbors[id - 1].clear or not neighbors[id + 3].clear
-						or neighbors[id - 1].walkable or neighbors[id + 3].walkable then
-					cut_corner = true
-				end
-			elseif id == 7 then
-				if not neighbors[id + 1].clear or not neighbors[id - 3].clear
-						or neighbors[id + 1].walkable or neighbors[id - 3].walkable then
-					cut_corner = true
-				end
-			elseif id == 9 then
-				if not neighbors[id - 1].clear or not neighbors[id - 3].clear
-						or neighbors[id - 1].walkable or neighbors[id - 3].walkable then
-					cut_corner = true
-				end
-			end
-			if neighbor.hash ~= current_index and not closedSet[neighbor.hash] and neighbor.clear and not cut_corner then
-				local move_cost_to_neighbor = current_values.gCost + get_distance_to_neighbor(current_values.pos, neighbor.pos)
-				local gCost = 0
-				if openSet[neighbor.hash] then
-					gCost = openSet[neighbor.hash].gCost
-				end
-				if move_cost_to_neighbor < gCost or not openSet[neighbor.hash] then
-					if not openSet[neighbor.hash] then
-						count = count + 1
-					end
-					local hCost = get_distance(neighbor.pos, endpos)
-					openSet[neighbor.hash] = {
-							gCost = move_cost_to_neighbor,
-							hCost = hCost,
-							fCost = move_cost_to_neighbor + hCost,
-							parent = current_index,
-							pos = neighbor.pos
-					}
-				end
-			end
+local target = {x = 0, y = 0, z = 0}
+minetest.register_chatcommand("set_target",{
+	description = "set target point",
+	func = function(name,param)
+		local player = minetest.get_player_by_name(name)
+		local pos = player:get_pos()
+		pos = {
+			x = math.floor(pos.x+0.5), 
+			y = math.floor(pos.y+0.5), 
+			z = math.floor(pos.z+0.5)
+		} 
+		target = pos 
+	end
+})
+
+minetest.register_chatcommand("get_path",{
+	description = "get path to target",
+	func = function(name,param)
+		local player = minetest.get_player_by_name(name)
+		local pos = player:get_pos()
+		pos = {
+			x = math.floor(pos.x+0.5), 
+			y = math.floor(pos.y+0.5), 
+			z = math.floor(pos.z+0.5)
+		}
+		local path = pathfinder.find_path(pos, target, 0, 2, 4, 1)
+		for _,hash in pairs(path) do
+			minetest.set_node(minetest.get_position_from_hash(hash),{name = "default:glass"})
 		end
-		if count > 300 then
-			minetest.chat_send_all("Path fail")
-			return
-		end
-		if (minetest.get_us_time() - start_time) / 1000 > 30 - dtime * 50 then
-			minetest.chat_send_all("Path timeout")
-			return
-		end
-	until count < 1
-	minetest.chat_send_all("count < 1")
-	return {pos}
-end 
+	end
+})
