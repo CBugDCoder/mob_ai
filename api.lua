@@ -77,6 +77,10 @@ end
 local function check_inputs(self)
 	local new_driver = ""
 	local inputdata = nil
+	if self.script[self.driver] == nil then
+		minetest.log("error", "The driver "..self.driver.." does not appear in the mob script: "..self.name)
+		return
+	end
 	for input,driver in pairs(self.script[self.driver]) do
 		if self.inputs[input] ~= nil then
 			new_driver = driver
@@ -93,51 +97,16 @@ end
 local function physics(self)
 	if self.do_physics then
 		local pos = self.object:get_pos()
+		--Apply Gravity
 		self.object:set_acceleration({x = 0,y = self.fall_speed,z = 0})
 		--Am I in a liquid if so i float
 		if self.float and minetest.registered_nodes[get_node({x = pos.x,y = pos.y+(self.collisionbox[2]+0.5),z = pos.z}).name].groups.liquid then
 			self.object:set_acceleration({x = 0,y = 5,z = 0})
 		end
-		--Check if i need to jump and do so if i do
---[[	if self.jump and self:get_velocity() < self.velocity then
-		
-			local yaw = self.object:get_rotation().y
-			local node_under = get_node({
-				pos.z,
-				pos.y-(self.collisionbox[2]-0.2),
-				pos.z,		if self.jump and self:get_velocity() < self.velocity then
-		
-			local yaw = self.object:get_rotation().y
-			local node_under = get_node({
-				pos.z,
-				pos.y-(self.collisionbox[2]-0.2),
-				pos.z,
-			})
-			local node = get_node({
-				x = pos.x-math.sin(yaw) * (self.collisionbox[4] + 0.5), 
-				y = pos.y+0.5, 
-				z = pos.z+math.cos(yaw) * (self.collisionbox[4] + 0.5)
-			})
-			if minetest.registered_nodes[node.name].walkable == true and minetest.registered_nodes[node_under.name].walkable == true then
-				local vel = self.object:get_velocity()
-				self.object:set_velocity({x = vel.x,y = self.jump_height,z = vel.z})
-			end
-		end
-			})
-			local node = get_node({
-				x = pos.x-math.sin(yaw) * (self.collisionbox[4] + 0.5), 
-				y = pos.y+0.5, 
-				z = pos.z+math.cos(yaw) * (self.collisionbox[4] + 0.5)
-			})
-			if minetest.registered_nodes[node.name].walkable == true and minetest.registered_nodes[node_under.name].walkable == true then
-				local vel = self.object:get_velocity()
-				self.object:set_velocity({x = vel.x,y = self.jump_height,z = vel.z})
-			end
-		end]]--
 	end
 end
 
-function mob_ai.on_step(self,dtime)
+local function on_step(self,dtime)
 	--Timer for finding when animations end
 	self.time_till_anim_end = self.time_till_anim_end-dtime
 	if self.time_till_anim_end <= 0 then
@@ -198,30 +167,20 @@ function mob_ai.on_step(self,dtime)
 	
 end
 
-function mob_ai.on_rightclick(self,clicker)
+--When I get rightclicked, Tell my driver.
+local function on_rightclick(self,clicker)
 	self.inputs.rightclick = true
 	if self.driver_funcs.on_rightclick then self.driver_funcs.on_rightclick(self,clicker) end
 end
 
-function mob_ai.on_punch(self,puncher,time_from_last_punch,tool_capabilities,dir)
+--Ouch called when I get punched
+local function on_punch(self,puncher,time_from_last_punch,tool_capabilities,dir)
 	self.inputs.punch = true
 	if self.driver_funcs.on_punch then self.driver_funcs.on_punch(self,puncher,time_from_last_punch,tool_capabilities,dir) end
-	--weapon wear
-	local weapon = puncher:get_wielded_item()
-	if tool_capabilities then
-		punch_interval = tool_capabilities.full_punch_interval or 1.4
-	end
-
-	if weapon:get_definition()
-	and weapon:get_definition().tool_capabilities then
-
-		weapon:add_wear(math.floor((punch_interval / 75) * 9000))
-		puncher:set_wielded_item(weapon)
-	end
-	
 end
 
-function mob_ai.get_staticdata(self)
+--Save
+local function get_staticdata(self)
 	local tmp = {}
 	for var,val in ipairs(self) do
 		local t = type(val)
@@ -235,7 +194,8 @@ function mob_ai.get_staticdata(self)
 	return minetest.serialize(tmp)
 end
 
-function mob_ai.on_activate(self,staticdata,dtimes)
+--Load
+local function on_activate(self,staticdata,dtimes)
 	local tmp = minetest.deserialize(staticdata)
 	if tmp then
 		for var,val in pairs(tmp) do
@@ -248,7 +208,8 @@ function mob_ai.on_activate(self,staticdata,dtimes)
 	self.driver_funcs.start(self,"startup",nil)
 end
 
-function mob_ai.on_die(self,killer)
+--Umm I am now dead what do I do?
+local function on_die(self,killer)
 	if self.on_die then self.on_die(self,killer) end
 	local pos = self.object:get_pos()
 	self.drops = self.drops or {}
@@ -268,6 +229,7 @@ function mob_ai.on_die(self,killer)
 	end
 end
 
+--Helper function to set my rotation.
 local function set_rot(self,rot,delay)
 	for axis,value in pairs(rot) do
 		if value > math.pi*2 then value = value-(math.pi*2) end
@@ -281,6 +243,7 @@ local function set_rot(self,rot,delay)
 	self.delay = delay
 end
 
+--Helper function to set my velocity
 local function set_velocity(self,velocity,use_target_rot)
 	local cv = self.object:get_velocity()
 	if type(velocity) == "number" then
@@ -316,11 +279,13 @@ local function set_velocity(self,velocity,use_target_rot)
 	return true
 end
 
+--Returns my instantaneous velocity
 local function get_velocity(self)
 	local vel = self.object:get_velocity()
 	return math.sqrt(vel.x^2+vel.y^2+vel.z^2)
 end
 
+--Helper function to set my animation
 local function set_animation(self,animation)
 	local anim_data = self.animations[animation]
 	local frame_range = {}
@@ -379,12 +344,12 @@ function mob_ai.register_mob(name,def)
 		walk_speed             = def.walk_speed or 2,
 		
 		--Functions
-		on_step                = mob_ai.on_step,
-		on_death               = mob_ai.on_die,
-		on_rightclick          = mob_ai.on_rightclick,
-		on_punch               = mob_ai.on_punch,
-		on_activate            = mob_ai.on_activate,
-		get_staticdata         = mob_ai.get_staticdata,
+		on_step                = on_step,
+		on_death               = on_die,
+		on_rightclick          = on_rightclick,
+		on_punch               = on_punch,
+		on_activate            = on_activate,
+		get_staticdata         = get_staticdata,
 
 		--mob vars
 		inputs                 = {},
@@ -403,6 +368,7 @@ function mob_ai.register_mob(name,def)
 		set_animation          = set_animation,
 		get_velocity           = get_velocity,
 	}
+	--Add driver specific variables
 	for driver,_ in pairs(definition.script) do
 		if mob_ai.registered_drivers[driver].custom_vars ~= nil then
 			for var,init_val in pairs(mob_ai.registered_drivers[driver].custom_vars) do
