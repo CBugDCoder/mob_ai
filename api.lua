@@ -19,6 +19,12 @@ local function get_node(pos,fallback)
 	return minetest.registered_nodes[fallback]
 end
 
+local function walkable(pos)
+	local node = minetest.get_node(pos)
+	local walkable = minetest.registered_nodes[node.name].walkable
+	return walkable
+end
+
 --Add a Driver to the list of available drivers
 function mob_ai.register_driver(name,def)
 	mob_ai.registered_drivers[name] = def
@@ -93,6 +99,18 @@ local function check_inputs(self)
 	end
 end
 
+--Am I on the ground?
+local function is_on_ground(self)
+	local pos = self.object:get_pos()
+	local groundray = minetest.raycast(pos, {x=pos.x,y=pos.y-0.1+self.collisionbox[2],z=pos.z}, false, false)
+	local ground = groundray:next()
+	if ground ~= nil and walkable(ground.under) then
+		return true
+	else
+		return false
+	end
+end
+
 --Calculate physics
 local function physics(self)
 	if self.do_physics then
@@ -106,7 +124,69 @@ local function physics(self)
 	end
 end
 
-local function on_step(self,dtime)
+--Jump
+local function jump(self)
+	self.object:add_velocity({x=0,y=self.jump_height*5,z=0})
+end
+
+--Feed in a position and i will find a way
+local function go_to(self, pos)
+	pos = vector.round(pos)
+	local mypos = self.object:get_pos()
+	local path = pathfinder.find_path(vector.round(mypos), pos, 0, math.max(1, self.collisionbox[5]-self.collisionbox[2]), fear_height, jump_height)
+	if type(path) == "table" then
+		self.path = path
+		self.following_path = true
+		local next = minetest.get_position_from_hash(path[1])
+		self.object:set_velocity(vector.new(0,0,0))
+		local vec = vector.direction(mypos, next)
+		local rot = math.atan2(vec.z,vec.x)-math.pi/2
+		if rot < 0 then rot = rot + math.pi*2 end
+		self:set_rot(rot, 0.5)
+	else
+		self.delayed_inputs["path_not_found"] = true
+	end
+end
+
+--Follow the path I am on
+local function follow_path(self)
+	local pos = self.object:get_pos()
+	local next = minetest.get_position_from_hash(self.path[1])
+	local arrived = vector.distance(self.object:get_pos(), next) < 0.1
+	if not arrived then
+		local dir = vector.direction(pos, next)
+		local rot = math.atan2(dir.z, dir.x)-math.pi/2
+		if rot < 0 then rot = rot + math.pi*2 end
+		local diff = math.abs(self.object:get_rotation().y-rot)
+		if math.abs(self.object:get_rotation().y-rot) > 1 then
+			arrived = true
+		elseif diff > 0.5 then
+			self:set_rot(rot, 0)
+		end
+	end
+	if arrived then
+		self.object:set_pos(vector.new(next.x, pos.y, next.z))
+		self.object:set_velocity(vector.new(0,0,0))
+		table.remove(self.path, 1)
+		local next1 = self.path[1]
+		if next1 ~= nil then
+			next1 = minetest.get_position_from_hash(next1)
+			local vec = vector.direction(next, next1)
+			local rot = math.atan2(vec.z,vec.x)-math.pi/2
+			self:set_rot(rot, 0.5)
+		else
+			self.following_path = false
+			self.inputs["path_finished"] = true
+		end
+	else
+		if pos.y+self.collisionbox[2]+0.75 < next.y and self:is_on_ground() then
+			self:jump()
+		end
+		self:set_velocity(self.walk_speed)
+	end
+end
+
+local function on_step(self, dtime)
 	--Timer for finding when animations end
 	self.time_till_anim_end = self.time_till_anim_end-dtime
 	if self.time_till_anim_end <= 0 then
@@ -121,9 +201,9 @@ local function on_step(self,dtime)
 		end
 	end
 	--Smooth turning
-	if self.delay > 0 then	
+	if self.rot_delay > 0 then	
 		local rot = self.object:get_rotation()
-		if self.delay == 1 then
+		if self.rot_delay-dtime <= 0 then
 			rot = self.target_rot
 		else
 			for _,axis in pairs({"x","y","z"}) do
@@ -132,27 +212,32 @@ local function on_step(self,dtime)
 					if dif > math.pi then
 						dif = 2*math.pi - dif
 						-- need to add
-						rot[axis] = rot[axis] + dif/self.delay
+						rot[axis] = rot[axis] + dif/self.rot_delay*dtime
 					else
 						-- need to subtract
-						rot[axis] = rot[axis] - dif/self.delay
+						rot[axis] = rot[axis] - dif/self.rot_delay*dtime
 					end
 				elseif rot[axis] < self.target_rot[axis] then
 					if dif > math.pi then
 						dif = 2*math.pi - dif
 						-- need to subtract
-						rot[axis] = rot[axis] - dif/self.delay
+						rot[axis] = rot[axis] - dif/self.rot_delay*dtime
 					else
 						-- need to add
-						rot[axis] = rot[axis] + dif/self.delay
+						rot[axis] = rot[axis] + dif/self.rot_delay*dtime
 					end		
 				end
 				if rot[axis] > (math.pi*2) then rot[axis] = rot[axis]-(math.pi*2) end
 				if rot[axis] < 0 then rot[axis] = rot[axis]+(math.pi*2) end
 			end
 		end
-		self.delay = self.delay-1
+		self.rot_delay = self.rot_delay-dtime
 		self.object:set_rotation(rot)
+	end
+	
+	--If I am following a path continue
+	if self.following_path and self.rot_delay <= 0 then
+		follow_path(self)
 	end
 	
 	--Do driver
@@ -163,7 +248,8 @@ local function on_step(self,dtime)
 	--Calculate Physics
 	physics(self)
 	--Clear Inputs
-	self.inputs = {}
+	self.inputs = self.delayed_inputs
+	self.delayed_inputs = {}
 	
 end
 
@@ -231,16 +317,26 @@ end
 
 --Helper function to set my rotation.
 local function set_rot(self,rot,delay)
+	if type(rot) == "number" then
+		rot = vector.new(0, rot, 0)
+	end
+	if type(rot) ~= "table" then
+		minetest.log("error", "Attempt to set rotation with a rot that is neither a number nor a table.")
+		return
+	end
+	if vector.distance(rot, self.object:get_rotation()) < 0.1 then
+		delay = 0
+	end
 	for axis,value in pairs(rot) do
 		if value > math.pi*2 then value = value-(math.pi*2) end
 		if value < 0 then value = value+(math.pi*2) end
 		rot[axis] = value
 	end
 	if delay == 0 then
-		self.object:set_rot(rot)
+		self.object:set_rotation(rot)
 	end
 	self.target_rot = rot
-	self.delay = delay
+	self.rot_delay = delay
 end
 
 --Helper function to set my velocity
@@ -339,9 +435,10 @@ function mob_ai.register_mob(name,def)
  		do_physics             = def.do_physics or true,
 		float                  = def.float or true,
 		jump                   = def.jump or true,
-		jump_height            = def.jump_height or 5,
+		jump_height            = def.jump_height or 1,
 		fall_speed             = def.fall_speed or -10,
 		walk_speed             = def.walk_speed or 2,
+		fear_height            = def.fear_height or 4,
 		
 		--Functions
 		on_step                = on_step,
@@ -353,20 +450,26 @@ function mob_ai.register_mob(name,def)
 
 		--mob vars
 		inputs                 = {},
+		delayed_inputs         = {},
 		is_mob                 = true,
-		delay                  = 0,
+		rot_delay                  = 0,
 		target_rot             = {yaw = 0, pitch = 0, roll = 0},
 		time_till_anim_end     = 0,
 		timer                  = 0,
 		target                 = nil,
 		velocity               = 0,
 		anim                   = "",
+		path                   = {},
+		following_path         = false,
 
 		--helper functions
 		set_rot                = set_rot,
 		set_velocity           = set_velocity,
 		set_animation          = set_animation,
 		get_velocity           = get_velocity,
+		go_to                  = go_to,
+		is_on_ground           = is_on_ground,
+		jump                   = jump,
 	}
 	--Add driver specific variables
 	for driver,_ in pairs(definition.script) do

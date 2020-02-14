@@ -146,12 +146,12 @@ local function get_path(list, current)
 	end
 	
 	--Reverse the order of path to go from start to end not end to start
-	--[[local reordered_path = {}
+	local reordered_path = {}
 	for i = #path, 1, -1 do
 		table.insert(reordered_path,path[i])
 		print(path[i])
-	end]]
-	return path
+	end
+	return reordered_path
 end
 
 
@@ -222,6 +222,14 @@ function pathfinder.find_path(current_pos, target_pos, path_type, height, fall, 
 	while counter < 400 do
 		--Increment counter to prevent an infinite loop
 		counter = counter + 1
+		local opensize = 0
+		for key,value in pairs(open) do
+			opensize = opensize+1
+		end
+		print(opensize)
+		if opensize == 0 then
+			break
+		end
 		--Get node to expand
 		local current = get_cheapest_node(open)
 		
@@ -273,9 +281,11 @@ function pathfinder.find_path(current_pos, target_pos, path_type, height, fall, 
 		end--End For loop
 	end--End While loop
 	
-	print(minetest.get_us_time()-time)
+	--print(minetest.get_us_time()-time)
 	-- Did I get a good path back?
-	if path ~= {} then
+	print(dump(path))
+	print(#path)
+	if #path > 0 then
 		--Yes. Excellent then I will tell the user
 		return path
 	else
