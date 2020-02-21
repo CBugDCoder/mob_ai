@@ -1,6 +1,7 @@
 mob_ai = {}
 mob_ai.registered_drivers = {}
-
+mob_ai.registered_mobs = {}
+mob_ai.spawns = true
 --returns node def
 local function get_node(pos,fallback)
 	
@@ -133,7 +134,7 @@ end
 local function go_to(self, pos)
 	pos = vector.round(pos)
 	local mypos = self.object:get_pos()
-	local path = pathfinder.find_path(vector.round(mypos), pos, 0, math.max(1, self.collisionbox[5]-self.collisionbox[2]), fear_height, jump_height)
+	local path = pathfinder.find_path(vector.round(mypos), pos, 0, math.max(1, self.collisionbox[5]-self.collisionbox[2]), self.fear_height, self.jump_height)
 	if type(path) == "table" then
 		self.path = path
 		self.following_path = true
@@ -479,5 +480,6 @@ function mob_ai.register_mob(name,def)
 			end		
 		end
 	end
+	mob_ai.registered_mobs[name] = definition
 	minetest.register_entity(name,definition)
 end

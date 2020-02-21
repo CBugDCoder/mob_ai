@@ -2,6 +2,7 @@ local modpath = minetest.get_modpath("mob_ai")
 
 dofile(modpath.."/api.lua")
 dofile(modpath.."/drivers.lua")
+dofile(modpath.."/spawn.lua")
 dofile(modpath.."/pathfinder.lua")
 
 minetest.register_chatcommand("pathtest",{
