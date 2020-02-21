@@ -149,7 +149,6 @@ local function get_path(list, current)
 	local reordered_path = {}
 	for i = #path, 1, -1 do
 		table.insert(reordered_path,path[i])
-		print(path[i])
 	end
 	return reordered_path
 end
@@ -226,7 +225,6 @@ function pathfinder.find_path(current_pos, target_pos, path_type, height, fall, 
 		for key,value in pairs(open) do
 			opensize = opensize+1
 		end
-		print(opensize)
 		if opensize == 0 then
 			break
 		end
@@ -283,8 +281,6 @@ function pathfinder.find_path(current_pos, target_pos, path_type, height, fall, 
 	
 	--print(minetest.get_us_time()-time)
 	-- Did I get a good path back?
-	print(dump(path))
-	print(#path)
 	if #path > 0 then
 		--Yes. Excellent then I will tell the user
 		return path
